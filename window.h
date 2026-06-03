@@ -20,7 +20,7 @@ private:
 
     std::vector<double> x_nodes;
     std::vector<double> f_nodes;
-    std::vector<double> a_newt;
+    std::vector<double> a_parab;
     std::vector<double> a_bessel;
 
     void rebuild();

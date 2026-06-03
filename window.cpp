@@ -1,6 +1,6 @@
 #include "window.h"
 #include "bessel.h"
-#include "newt.h"
+#include "parab.h"
 
 #include <QKeyEvent>
 #include <QPainter>
@@ -19,8 +19,34 @@ static double func_4(double x) { return x * x * x * x; }
 static double func_5(double x) { return exp(x); }
 static double func_6(double x) { return 1.0 / (25.0 * x * x + 1.0); }
 
+static double d2_func_0(double x)
+{
+    (void)x;
+    return 0.0;
+}
+static double d2_func_1(double x)
+{
+    (void)x;
+    return 0.0;
+}
+static double d2_func_2(double x)
+{
+    (void)x;
+    return 2.0;
+}
+static double d2_func_3(double x) { return 6.0 * x; }
+static double d2_func_4(double x) { return 12.0 * x * x; }
+static double d2_func_5(double x) { return exp(x); }
+static double d2_func_6(double x)
+{
+    double u = 25.0 * x * x + 1.0;
+    return (50.0 * (75.0 * x * x - 1.0)) / (u * u * u);
+}
+
 static double (*const g_funcs[7])(double) = {func_0, func_1, func_2, func_3,
                                              func_4, func_5, func_6};
+static double (*const g_d2funcs[7])(double) = {d2_func_0, d2_func_1, d2_func_2, d2_func_3,
+                                               d2_func_4, d2_func_5, d2_func_6};
 static const char *const g_names[7] = {"1", "x", "x^2", "x^3", "x^4", "e^x", "1/(25x^2+1)"};
 
 static void draw_polyline(QPainter &painter, const std::vector<double> &ys, const QColor &color)
@@ -100,7 +126,7 @@ void Window::rebuild()
 
     x_nodes.resize(sz);
     f_nodes.resize(sz);
-    a_newt.resize(sz);
+    a_parab.resize(2 * sz);
     a_bessel.resize(sz);
 
     for (i = 0; i < n; i++) {
@@ -125,8 +151,12 @@ void Window::rebuild()
             f_nodes[static_cast<size_t>(i)] += perturb_p * 0.1 * f_max;
     }
 
-    if (n <= 50)
-        newt::method_init(n, x_nodes.data(), f_nodes.data(), a_newt.data());
+    {
+        double d2[2];
+        d2[0] = g_d2funcs[k](x_nodes[0]);
+        d2[1] = g_d2funcs[k](x_nodes[static_cast<size_t>(n - 1)]);
+        parab::method_init(n, x_nodes.data(), f_nodes.data(), a_parab.data(), d2);
+    }
 
     bessel::method_init(n, x_nodes.data(), f_nodes.data(), a_bessel.data());
 }
@@ -184,34 +214,29 @@ void Window::paintEvent(QPaintEvent * /* event */)
     double va = a / sf;
     double vb = b / sf;
 
-    bool show_newt = (n <= 50);
-
     std::vector<double> ys_func(static_cast<size_t>(pts));
-    std::vector<double> ys_newt(static_cast<size_t>(pts), 0.0);
+    std::vector<double> ys_parab(static_cast<size_t>(pts));
     std::vector<double> ys_bessel(static_cast<size_t>(pts));
-    std::vector<double> ys_err1(static_cast<size_t>(pts), 0.0);
+    std::vector<double> ys_err1(static_cast<size_t>(pts));
     std::vector<double> ys_err2(static_cast<size_t>(pts));
 
     for (int i = 0; i < pts; i++) {
         double xi = va + static_cast<double>(i) / (pts - 1) * (vb - va);
         double yf = g_funcs[k](xi);
+        double yp = parab::method_compute(xi, a, b, n, x_nodes.data(), a_parab.data());
         double yb = bessel::method_compute(xi, a, b, n, x_nodes.data(), a_bessel.data());
         ys_func[static_cast<size_t>(i)] = yf;
+        ys_parab[static_cast<size_t>(i)] = yp;
         ys_bessel[static_cast<size_t>(i)] = yb;
+        ys_err1[static_cast<size_t>(i)] = yp - yf;
         ys_err2[static_cast<size_t>(i)] = yb - yf;
-        if (show_newt) {
-            double yn = newt::method_compute(xi, a, b, n, x_nodes.data(), a_newt.data());
-            ys_newt[static_cast<size_t>(i)] = yn;
-            ys_err1[static_cast<size_t>(i)] = yn - yf;
-        }
     }
 
     double ymin = 0.0, ymax = 1.0;
     switch (disp_mode) {
     case 0:
         range_init(ys_func, ymin, ymax);
-        if (show_newt)
-            range_expand(ys_newt, ymin, ymax);
+        range_expand(ys_parab, ymin, ymax);
         break;
     case 1:
         range_init(ys_func, ymin, ymax);
@@ -219,17 +244,12 @@ void Window::paintEvent(QPaintEvent * /* event */)
         break;
     case 2:
         range_init(ys_func, ymin, ymax);
-        if (show_newt)
-            range_expand(ys_newt, ymin, ymax);
+        range_expand(ys_parab, ymin, ymax);
         range_expand(ys_bessel, ymin, ymax);
         break;
     case 3:
-        if (show_newt) {
-            range_init(ys_err1, ymin, ymax);
-            range_expand(ys_err2, ymin, ymax);
-        } else {
-            range_init(ys_err2, ymin, ymax);
-        }
+        range_init(ys_err1, ymin, ymax);
+        range_expand(ys_err2, ymin, ymax);
         break;
     default:
         range_init(ys_func, ymin, ymax);
@@ -254,8 +274,7 @@ void Window::paintEvent(QPaintEvent * /* event */)
     switch (disp_mode) {
     case 0:
         draw_polyline(painter, ys_func, QColor("blue"));
-        if (show_newt)
-            draw_polyline(painter, ys_newt, QColor("red"));
+        draw_polyline(painter, ys_parab, QColor("red"));
         break;
     case 1:
         draw_polyline(painter, ys_func, QColor("blue"));
@@ -263,13 +282,11 @@ void Window::paintEvent(QPaintEvent * /* event */)
         break;
     case 2:
         draw_polyline(painter, ys_func, QColor("blue"));
-        if (show_newt)
-            draw_polyline(painter, ys_newt, QColor("red"));
+        draw_polyline(painter, ys_parab, QColor("red"));
         draw_polyline(painter, ys_bessel, QColor("green"));
         break;
     case 3:
-        if (show_newt)
-            draw_polyline(painter, ys_err1, QColor("red"));
+        draw_polyline(painter, ys_err1, QColor("red"));
         draw_polyline(painter, ys_err2, QColor("green"));
         break;
     default:
@@ -286,8 +303,8 @@ void Window::paintEvent(QPaintEvent * /* event */)
     painter.restore();
 
     static const char *const mode_desc[4] = {
-        "func(blue) + Newton(red)", "func(blue) + Bessel(green)",
-        "func(blue) + Newton(red) + Bessel(green)", "err Newton(red)  err Bessel(green)"};
+        "func(blue) + Parab(red)", "func(blue) + Bessel(green)",
+        "func(blue) + Parab(red) + Bessel(green)", "err Parab(red)  err Bessel(green)"};
 
     char info[256];
     snprintf(info, sizeof(info), "k=%d f(x)=%s  mode=%d  n=%d  s=%d  p=%d  max=%.4g", k,
