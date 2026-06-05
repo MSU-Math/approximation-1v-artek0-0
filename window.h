@@ -17,6 +17,8 @@ private:
     int scale_s;
     int perturb_p;
     double f_max;
+    double err_parab_max;
+    double err_bessel_max;
 
     std::vector<double> x_nodes;
     std::vector<double> f_nodes;

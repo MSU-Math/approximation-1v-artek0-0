@@ -213,6 +213,8 @@ void Window::paintEvent(QPaintEvent * /* event */)
     double sf = pow(2.0, static_cast<double>(scale_s));
     double va = a / sf;
     double vb = b / sf;
+    double err_parab_max = 0.0;
+    double err_bessel_max = 0.0;
 
     std::vector<double> ys_func(static_cast<size_t>(pts));
     std::vector<double> ys_parab(static_cast<size_t>(pts));
@@ -224,12 +226,24 @@ void Window::paintEvent(QPaintEvent * /* event */)
         double xi = va + static_cast<double>(i) / (pts - 1) * (vb - va);
         double yf = g_funcs[k](xi);
         double yp = parab::method_compute(xi, a, b, n, x_nodes.data(), a_parab.data());
+        if (fabs(yp) < 1e-10) yp = 0.0;
         double yb = bessel::method_compute(xi, a, b, n, x_nodes.data(), a_bessel.data());
         ys_func[static_cast<size_t>(i)] = yf;
         ys_parab[static_cast<size_t>(i)] = yp;
         ys_bessel[static_cast<size_t>(i)] = yb;
-        ys_err1[static_cast<size_t>(i)] = yp - yf;
-        ys_err2[static_cast<size_t>(i)] = yb - yf;
+        double e1 = yp - yf;
+        double e2 = yb - yf;
+
+        ys_err1[static_cast<size_t>(i)] = e1;
+        ys_err2[static_cast<size_t>(i)] = e2;
+
+        if (fabs(e1) > err_parab_max)
+            err_parab_max = fabs(e1);
+
+        if (fabs(e2) > err_bessel_max)
+            err_bessel_max = fabs(e2);
+
+        if (err_parab_max < 1e-12) err_parab_max = 0.0;
     }
 
     double ymin = 0.0, ymax = 1.0;
@@ -307,8 +321,13 @@ void Window::paintEvent(QPaintEvent * /* event */)
         "func(blue) + Parab(red) + Bessel(green)", "err Parab(red)  err Bessel(green)"};
 
     char info[256];
-    snprintf(info, sizeof(info), "k=%d f(x)=%s  mode=%d  n=%d  s=%d  p=%d  max=%.4g", k,
-             g_names[k], disp_mode, n, scale_s, perturb_p, max_val);
+
+    snprintf(info, sizeof(info),
+         "k=%d f(x)=%s  mode=%d  n=%d  s=%d  p=%d \n"
+         "errParab=%.6e  errBessel=%.6e",
+         k, g_names[k], disp_mode, n, scale_s, perturb_p,
+         err_parab_max, err_bessel_max);
+
     painter.setPen(QColor("black"));
     painter.drawText(8, 18, QString(info));
     painter.drawText(8, 34, QString(mode_desc[disp_mode]));
