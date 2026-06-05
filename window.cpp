@@ -126,7 +126,7 @@ void Window::rebuild()
 
     x_nodes.resize(sz);
     f_nodes.resize(sz);
-    a_parab.resize(2 * sz);
+    a_parab.resize(2 * sz + 2);
     a_bessel.resize(sz);
 
     for (i = 0; i < n; i++) {
