@@ -242,8 +242,6 @@ void Window::paintEvent(QPaintEvent * /* event */)
 
         if (fabs(e2) > err_bessel_max)
             err_bessel_max = fabs(e2);
-
-        if (err_parab_max < 1e-12) err_parab_max = 0.0;
     }
 
     double ymin = 0.0, ymax = 1.0;
